@@ -1,0 +1,48 @@
+block_small = 15
+block_move = 30
+
+input:
+	speed / 2
+	???
+	
+for each specific level input is:
+	x, y ??
+	
+	60 x 30 x object_size
+	
+34 seconds
+
+input:
+-1:1 size
+-1:1 velocity / 3
+-1:1 gravity
+-1:1 for each gamemode
+x*y -1:1 is standable
+x*y -1:1 kills you
+x*y -1:1 for each orb
+x*y -1:1 for each orb
+
+@0x1e9050, 0 gravity
+@0x203519, opcodes
+player_freeze
+player_lock_jump
+@0x203da2, 0x20401a
+player_kill_enable
+@0x1e4a32
+enable_level_edit
+@0x20813f
+enable_accurate_percentage
+@0x0x179B8E
+enable_level_copy
+..etc
+
+self.get_editor_level_name
+
+self.get_level_id
+self.get_level_name
+self.get_level_creator
+self.get_editor_level_name
+self.get_level_stars
+self.get_level_score
+
+self.redirect_memory ??
