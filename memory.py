@@ -5,6 +5,10 @@ import win32gui
 import win32api
 import win32con
 import neat
+import json
+import hitbox_manager
+from hitbox_manager import ObjectCollision
+from PIL import Image
 
 class _GeometryDash:
         def __init__(self):
@@ -26,12 +30,13 @@ class _GeometryDash:
 
 _gd_game = _GeometryDash()
 #exit()
-X_SIZE = 20
-Y_SIZE = 10
-ROUND_SIZE = 10
-EXTRA_SIZE = 9 # size, velocity, gravity, gamemode * 6
-OBJ_SIZE = 31
-TOTAL_SIZE = X_SIZE * Y_SIZE * OBJ_SIZE + EXTRA_SIZE
+X_SIZE = 50
+Y_SIZE = 30
+SCALE_SIZE = 8
+EXTRA_SIZE = 8 # size, velocity, gravity, speed, gamemode * 4
+# robot and spider are ignored
+#OBJ_SIZE = 31
+TOTAL_SIZE = X_SIZE * Y_SIZE + EXTRA_SIZE
 print(f"TOTAL_SIZE = {TOTAL_SIZE}")
 
 """
@@ -89,78 +94,47 @@ def level_updates():
 gd_window = win32gui.FindWindow(None, "Geometry Dash")
 
 def my_round(val):
-    val = int(val)
-    val -= val % ROUND_SIZE
-    return val
+    return round(val / SCALE_SIZE)
 
 async def init():
-    global _mem, _level, _objects
-    global _obj_id_convert
-    _obj_id_convert = {}
-    _objects = {}
-    client = gd.Client()
-    _mem = gd.memory.get_memory()
-    _level = await client.get_level(20424353)
-    print (_level.name)
-    m = {}
-    level = _level
-    print (len((level.open_editor().get_objects())))
-    for obj in level.open_editor().get_objects():
-        if obj.id not in m:
-            m[obj.id] = []
-        m[obj.id].append((obj.x, obj.y + 100.0))
-        obj_tpl = (my_round(obj.x), my_round(obj.y + 100.0))
-        #print (obj_tpl)
-        if obj_tpl not in _objects:
-            _objects[obj_tpl] = []
-        _objects[obj_tpl].append(obj.id)
-        #print ("id = {}, x = {}, y = {}".format(obj.id, obj_tpl[0], obj_tpl[1]))
-    for i, id in enumerate(m):
-        #print ("{} = {}".format(id, len(m[id])))
-        _obj_id_convert[id] = i
-    print (len(m)) # 30
-    assert len(m) == OBJ_SIZE - 1
+   global _img
+   global _pix
+   _img, _ = await hitbox_manager.visualize_level(20424353, "curr_level.png")
+   _img = hitbox_manager.compress_level_image(_img, SCALE_SIZE, "ai_view.png").transpose(Image.FLIP_TOP_BOTTOM)
+   _pix = _img.load()
+
 
 def get_surroundings():
-    mem = _mem
-    objects = _objects
-    obj_id_convert = _obj_id_convert
+    mem = _gd_game.mem
+    pix = _pix
     inputs = [0.0] * TOTAL_SIZE
     t1 = time.time()
-    start_x = my_round(mem.x_pos - 35)
-    start_y = my_round(mem.y_pos - 50)
-    #print (mem.x_pos)
-    #print ((start_x, start_x + X_SIZE * ROUND_SIZE))
-    #print (mem.y_pos)
-    #print ((start_y, start_y + Y_SIZE * ROUND_SIZE))
-    fix_x = lambda x : int((x - start_x) / ROUND_SIZE)
-    fix_y = lambda x : int((y - start_y) / ROUND_SIZE)
-    found_objs = 0
-    for x in range(start_x, start_x + X_SIZE * ROUND_SIZE, ROUND_SIZE):
-        for y in range(start_y, start_y + Y_SIZE * ROUND_SIZE, ROUND_SIZE):
-            if y <= 95:
-                at = fix_x(x) + fix_y(y) * X_SIZE + (OBJ_SIZE-1) * X_SIZE * Y_SIZE
-                #print(f"at ={at}")
-                inputs[at] = 1.0
-                found_objs += 1
-            if (x, y) not in objects:
-                continue
-            for obj_id in objects[(x, y)]:
-                found_objs += 1
-                #print("found obj - {}".format(obj_id))
-                at = fix_x(x) + fix_y(y) * X_SIZE + obj_id_convert[obj_id] * X_SIZE * Y_SIZE
-                #print(f"at = {at}")
-                inputs[at] = 1.0
-    inputs[TOTAL_SIZE-OBJ_SIZE+0] = mem.get_size()
-    inputs[TOTAL_SIZE-OBJ_SIZE+1] = get_velocity(mem)
-    inputs[TOTAL_SIZE-OBJ_SIZE+2] = -1 if get_gravity(mem) else 1
+    start_x = my_round(mem.x_pos - 45)
+    start_y = my_round(mem.y_pos) - int(SCALE_SIZE - 2)
+    found_kill = 0
+    found_wall = 0
+    #for x in range(start_x, start_x + X_SIZE):
+    for x in range(0, X_SIZE):
+        for y in range(0, Y_SIZE):
+        #for y in range(start_y, start_y + Y_SIZE):
+                col = pix[start_x + x, start_y + y]
+                if col == ObjectCollision.COLOR_KILL:
+                    found_kill += 1
+                    inputs[x * Y_SIZE + y] = -1
+                elif col == ObjectCollision.COLOR_WALL:
+                    found_wall += 1
+                    inputs[x * Y_SIZE + y] = 1
+                    
+    inputs[TOTAL_SIZE-EXTRA_SIZE+0] = mem.get_size()
+    inputs[TOTAL_SIZE-EXTRA_SIZE+1] = get_velocity(mem) / 3
+    inputs[TOTAL_SIZE-EXTRA_SIZE+2] = -1.0 if get_gravity(mem) else 1.0
+    inputs[TOTAL_SIZE-EXTRA_SIZE+3] = mem.get_speed() / 2
     gm_state = mem.get_gamemode_state()
-    for i in range(6):
-        inputs[TOTAL_SIZE-OBJ_SIZE+3+i] = 1 if gm_state[i] else -1
-
+    for i in range(4):
+        inputs[TOTAL_SIZE-EXTRA_SIZE+4+i] = 1 if gm_state[i] else -1
     t2 = time.time()
     #print ("time to get surroundings = {}".format(t2 - t1))
-    return inputs, found_objs
+    return inputs, (found_kill, found_wall)
 
 
 AI_FPS = 90.0
@@ -181,11 +155,11 @@ def eval_genomes(genomes, config):
         net = neat.nn.FeedForwardNetwork.create(genome, config)
         print ("Genome {}/32, id = {}...".format(i+1, genome_id))
         count = 0
-        prev_output = -1.0
+        prev_output = -2.0
         start_time = time.time()
         next_frame_time = time.time() + (1.0 / AI_FPS)
         while True:
-            inputs, obj_count = get_surroundings()
+            inputs, founds = get_surroundings()
             t1 = time.time()
             outputs = net.activate(inputs)
             t2 = time.time()
@@ -195,11 +169,10 @@ def eval_genomes(genomes, config):
 
             count += 1
             res = gd_game.mouse_input(outputs[0])
-            if count % 5 == 0:
-                if (abs(prev_output - outputs[0]) > 0.001):
-                    print("")
-                print(f"\rOutput {count} = {round(outputs[0], 4)}, objs_found = {obj_count}, res = {res}", end = "")
-                prev_output = outputs[0]
+            if (abs(prev_output - outputs[0]) > 0.001):
+                print("")
+            print(f"\rOutput {count} = {round(outputs[0], 4)}, kills = {founds[0]}, walls = {founds[1]}", end = "")
+            prev_output = outputs[0]
             genome.fitness -= res * 23.0
             if mem.is_dead():
                 print("")

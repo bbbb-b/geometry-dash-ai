@@ -42,7 +42,13 @@ self.get_level_id
 self.get_level_name
 self.get_level_creator
 self.get_editor_level_name
-self.get_level_stars
+self.get_level_starsi
 self.get_level_score
 
 self.redirect_memory ??
+
+
+// object that could be turned into a rectangle, basically
+// sizes are floats
+[id, kills, hitbox_type, x_offset /* from target */, y_offset /* from ground */,
+top_size, right_size, bot_size, left_size]
